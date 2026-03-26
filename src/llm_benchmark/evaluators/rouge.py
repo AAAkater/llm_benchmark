@@ -1,20 +1,20 @@
-"""Evaluation metrics for summarization tasks.
+"""ROUGE evaluation metrics for summarization tasks.
 
 Supports:
 - ROUGE-1, ROUGE-2, ROUGE-L (via rouge-score)
 - Chinese ROUGE (via rouge-chinese)
 """
 
-from typing import Literal
+from typing import Literal, override
 
-from pydantic import BaseModel
 from rouge_chinese import Rouge as ChineseRouge
 from rouge_score import rouge_scorer
 
+from llm_benchmark.evaluators.base import BaseEvaluator, BaseScores, EvaluationResult
 from llm_benchmark.utils.logger import logger
 
 
-class RougeScores(BaseModel):
+class RougeScores(BaseScores):
     """ROUGE scores for a single sample."""
 
     rouge1: float
@@ -22,17 +22,7 @@ class RougeScores(BaseModel):
     rougeL: float
 
 
-class EvaluationResult(BaseModel):
-    """Complete evaluation result for a sample."""
-
-    sample_id: str
-    prediction: str
-    reference: str
-    rouge_scores: RougeScores
-    metadata: dict[str, str] | None = None
-
-
-class RougeEvaluator:
+class RougeEvaluator(BaseEvaluator[RougeScores]):
     """Evaluator for ROUGE metrics."""
 
     def __init__(
@@ -67,6 +57,7 @@ class RougeEvaluator:
 
         return " ".join(jieba.cut(text))
 
+    @override
     def compute_scores(
         self,
         prediction: str,
@@ -105,6 +96,7 @@ class RougeEvaluator:
                 rougeL=scores["rougeL"].fmeasure,
             )
 
+    @override
     def evaluate(
         self,
         predictions: list[str],
@@ -143,7 +135,7 @@ class RougeEvaluator:
                     sample_id=sample_ids[i],
                     prediction=pred,
                     reference=ref,
-                    rouge_scores=scores,
+                    scores=scores,
                 )
             )
 
@@ -160,20 +152,3 @@ class RougeEvaluator:
         )
 
         return results, avg_scores
-
-
-def create_evaluator_for_dataset(dataset_name: str) -> RougeEvaluator:
-    """Create an appropriate evaluator for a dataset.
-
-    Args:
-        dataset_name: Name of the dataset.
-
-    Returns:
-        RougeEvaluator configured for the dataset's language.
-    """
-    # Chinese datasets
-    if dataset_name.lower() in ("lcsts",):
-        return RougeEvaluator(language="zh")
-
-    # English datasets
-    return RougeEvaluator(language="en")
