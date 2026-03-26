@@ -1,7 +1,7 @@
 """Base classes for dataset loaders."""
 
 from abc import ABC, abstractmethod
-from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -27,8 +27,8 @@ class BaseDataset(ABC):
     @abstractmethod
     def load(
         self,
-        split: str = "test",
-        data_dir: str | Path | None = None,
+        split: Literal["train", "validation", "test"] = "test",
+        data_dir: str | None = None,
         max_samples: int | None = None,
     ) -> list[Sample]:
         """Load dataset samples.

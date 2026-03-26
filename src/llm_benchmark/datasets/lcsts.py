@@ -1,8 +1,9 @@
 """LCSTS dataset for Chinese short text summarization."""
 
-import json
 import re
-from pathlib import Path
+from typing import Literal
+
+from datasets import load_dataset
 
 from llm_benchmark.datasets.base import BaseDataset, Sample
 from llm_benchmark.utils.logger import logger
@@ -12,46 +13,51 @@ class LCSTSDataset(BaseDataset):
     """LCSTS dataset for Chinese short text summarization."""
 
     name = "hugcyp/LCSTS"
-    default_data_dir = ""
 
     def load(
         self,
-        split: str = "test",
-        data_dir: str | Path | None = None,
+        split: Literal["train", "validation", "test"] = "test",
+        data_dir: str | None = None,
         max_samples: int | None = None,
     ) -> list[Sample]:
-        """Load LCSTS dataset."""
-        data_path = Path(data_dir or self.default_data_dir)
-        file_map = {
-            "train": "train.jsonl",
-            "valid": "valid.jsonl",
-            "test": "test_public.jsonl",
-        }
+        """Load LCSTS dataset.
 
-        if split not in file_map:
-            raise ValueError(f"Unknown split: {split}. Available: {list(file_map.keys())}")
+        Args:
+            split: Dataset split to load (train, validation, test).
+            data_dir: Optional path to local data directory. If not provided,
+                dataset will be downloaded from Hugging Face.
+            max_samples: Maximum number of samples to load.
 
-        file_path = data_path / file_map[split]
-        if not file_path.exists():
-            raise FileNotFoundError(f"LCSTS file not found: {file_path}")
+        Returns:
+            List of Sample objects.
+        """
 
-        samples = []
-        with open(file_path, encoding="utf-8") as f:
-            for i, line in enumerate(f):
-                if max_samples and i >= max_samples:
-                    break
+        if split not in ["train", "validation", "test"]:
+            raise ValueError(f"Unknown split: {split}. Available: {['train', 'validation', 'test']}")
 
-                data = json.loads(line)
-                # LCSTS has empty summaries in test set, use the text as reference
-                summary = data.get("summary", "") or data.get("text", "")[:100]
-                samples.append(
-                    Sample(
-                        id=f"lcsts_{i}",
-                        text=data["text"],
-                        reference=summary,
-                        metadata={"source": "lcsts"},
-                    )
+        samples: list[Sample] = []
+
+        # Load from Hugging Face
+        dataset = load_dataset(
+            data_dir or self.name,
+            split=split,
+            trust_remote_code=not data_dir,
+        )
+
+        for i, item in enumerate(dataset):
+            if max_samples and i >= max_samples:
+                break
+
+            # LCSTS has empty summaries in test set, use the text as reference
+            summary = item.get("summary", "") or item.get("text", "")[:100]
+            samples.append(
+                Sample(
+                    id=f"lcsts_{i}",
+                    text=item["text"],
+                    reference=summary,
+                    metadata={"source": "lcsts"},
                 )
+            )
 
         logger.info(f"Loaded {len(samples)} LCSTS samples from {split} split")
         return samples

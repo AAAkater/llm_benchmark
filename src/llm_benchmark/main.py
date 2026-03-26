@@ -242,8 +242,10 @@ class BenchmarkRunner:
 
         # Save detailed results
         df = result.to_dataframe()
+        # Replace / with _ to avoid path issues (e.g., "hugcyp/LCSTS" -> "hugcyp_LCSTS")
+        safe_dataset_name = result.config.dataset_name.replace("/", "_")
         detail_path = (
-            self.output_dir / f"{result.config.dataset_name}_{result.timestamp}.jsonl"
+            self.output_dir / f"{safe_dataset_name}_{result.timestamp}.jsonl"
         )
         with open(detail_path, "w", encoding="utf-8") as f:
             for record in df.to_dict(orient="records"):

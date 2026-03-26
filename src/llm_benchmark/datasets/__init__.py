@@ -6,6 +6,8 @@ Supports:
 - TruthfulQA: Truthfulness evaluation (generation mode)
 """
 
+from typing import Literal
+
 from .base import BaseDataset, Sample
 from .lcsts import LCSTSDataset
 from .truthfulqa import TruthfulQADataset
@@ -13,7 +15,7 @@ from .xsum import XSumDataset
 
 # Dataset registry
 DATASET_REGISTRY: dict[str, type[BaseDataset]] = {
-    "lcsts": LCSTSDataset,
+    "hugcyp/LCSTS": LCSTSDataset,
     "xsum": XSumDataset,
     "truthfulqa": TruthfulQADataset,
 }
@@ -31,17 +33,14 @@ def get_dataset(name: str) -> BaseDataset:
     Raises:
         ValueError: If dataset name is unknown.
     """
-    name_lower = name.lower()
-    if name_lower not in DATASET_REGISTRY:
-        raise ValueError(
-            f"Unknown dataset: {name}. Available: {list(DATASET_REGISTRY.keys())}"
-        )
-    return DATASET_REGISTRY[name_lower]()
+    if name not in DATASET_REGISTRY:
+        raise ValueError(f"Unknown dataset: {name}. Available: {list(DATASET_REGISTRY.keys())}")
+    return DATASET_REGISTRY[name]()
 
 
 def load_dataset_by_name(
     name: str,
-    split: str = "test",
+    split: Literal["train", "validation", "test"] = "test",
     data_dir: str | None = None,
     max_samples: int | None = None,
 ) -> list[Sample]:
@@ -90,9 +89,7 @@ def postprocess_output(name: str, text: str) -> str:
 
 # Backward compatibility - keep old function names
 DATASET_LOADERS = {name: ds().load for name, ds in DATASET_REGISTRY.items()}
-DATASET_POSTPROCESSORS = {
-    name: ds().postprocess for name, ds in DATASET_REGISTRY.items()
-}
+DATASET_POSTPROCESSORS = {name: ds().postprocess for name, ds in DATASET_REGISTRY.items()}
 
 __all__ = [
     "Sample",
