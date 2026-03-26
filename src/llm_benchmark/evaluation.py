@@ -122,9 +122,7 @@ class RougeEvaluator:
             Tuple of (list of EvaluationResult, average scores dict).
         """
         if len(predictions) != len(references):
-            raise ValueError(
-                f"Mismatch: {len(predictions)} predictions, {len(references)} references"
-            )
+            raise ValueError(f"Mismatch: {len(predictions)} predictions, {len(references)} references")
 
         if sample_ids is None:
             sample_ids = [f"sample_{i}" for i in range(len(predictions))]

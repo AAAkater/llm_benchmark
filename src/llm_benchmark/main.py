@@ -7,11 +7,9 @@ from typing import Any
 
 import pandas as pd
 from pydantic import BaseModel
-from tqdm import tqdm
 
 from llm_benchmark.client import (
     BatchClient,
-    BatchRequest,
     ClientConfig,
     SamplingConfig,
 )
@@ -23,7 +21,6 @@ from llm_benchmark.datasets import (
 )
 from llm_benchmark.evaluation import (
     EvaluationResult,
-    RougeEvaluator,
     create_evaluator_for_dataset,
 )
 from llm_benchmark.utils.logger import logger
@@ -169,9 +166,6 @@ class BenchmarkRunner:
         logger.info(f"Starting benchmark: {config.dataset_name}")
         logger.info(f"Config: {config.to_dict()}")
 
-        if not await self.client.test_connection():
-            logger.error("Failed to connect to API server")
-            raise Exception("Failed to connect to API server")
         # Load dataset
         samples = load_dataset_by_name(
             name=config.dataset_name,
@@ -185,16 +179,24 @@ class BenchmarkRunner:
 
         # Get predictions
         logger.info(f"Starting inference for {len(prompts)} prompts...")
-        if config.use_batch_api:
-            predictions = await self._run_batch_inference(prompts, config)
-        else:
-            predictions = await self._run_concurrent_inference(prompts, config)
+        predictions = await self._run_concurrent_inference(prompts, config)
         logger.info(f"Inference completed, got {len(predictions)} predictions")
 
         # Postprocess predictions
         dataset = get_dataset(config.dataset_name)
-        predictions = [dataset.postprocess(p) for p in predictions]
-        logger.info(f"Applied postprocessing for {config.dataset_name}")
+        processed_predictions = []
+        processed_samples = []
+        for sample, pred in zip(samples, predictions):
+            try:
+                processed_pred = dataset.postprocess(pred)
+                processed_predictions.append(processed_pred)
+                processed_samples.append(sample)
+            except Exception as e:
+                logger.warning(f"Failed to postprocess sample {sample.id}: {e}")
+                continue
+        predictions = processed_predictions
+        samples = processed_samples
+        logger.info(f"Applied postprocessing for {config.dataset_name}, {len(predictions)} samples retained")
 
         # Evaluate
         evaluator = create_evaluator_for_dataset(config.dataset_name)
@@ -217,57 +219,6 @@ class BenchmarkRunner:
         self._save_results(result)
 
         return result
-
-    async def _run_batch_inference(
-        self,
-        prompts: list[str],
-        config: BenchmarkConfig,
-    ) -> list[str]:
-        """Run inference using Batch API."""
-        sampling = config.to_sampling_config()
-        all_predictions = [None] * len(prompts)
-
-        # Process in batches
-        for batch_start in tqdm(
-            range(0, len(prompts), config.batch_size),
-            desc="Processing batches",
-        ):
-            batch_end = min(batch_start + config.batch_size, len(prompts))
-            batch_prompts = prompts[batch_start:batch_end]
-
-            # Create batch requests
-            requests = [
-                BatchRequest(
-                    custom_id=f"req_{batch_start + i}",
-                    messages=[{"role": "user", "content": p}],
-                    sampling=sampling,
-                )
-                for i, p in enumerate(batch_prompts)
-            ]
-
-            try:
-                # Try Batch API
-                results = await self.client.run_batch(
-                    requests=requests,
-                    description=f"Benchmark batch {batch_start}-{batch_end}",
-                )
-
-                for result in results:
-                    idx = int(result.custom_id.split("_")[1])
-                    all_predictions[idx] = result.response
-
-            except Exception as e:
-                logger.warning(f"Batch API failed, falling back to concurrent: {e}")
-                # Fallback to concurrent requests
-                batch_preds = await self.client.query_batch_concurrent(
-                    prompts=batch_prompts,
-                    sampling=sampling,
-                    max_concurrent=config.max_concurrent,
-                )
-                for i, pred in enumerate(batch_preds):
-                    all_predictions[batch_start + i] = pred
-
-        return all_predictions
 
     async def _run_concurrent_inference(
         self,
@@ -441,12 +392,6 @@ async def main() -> None:
         base_url=args.base_url,
         model_name=args.model_name,
     )
-
-    # Test connection
-    client = BatchClient(client_config)
-    if not await client.test_connection():
-        logger.error("Failed to connect to API server")
-        return
 
     if args.sweep:
         await run_sampling_sweep(

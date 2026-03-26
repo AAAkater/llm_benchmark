@@ -1,6 +1,7 @@
 """LCSTS dataset for Chinese short text summarization."""
 
 import json
+import re
 from pathlib import Path
 
 from llm_benchmark.datasets.base import BaseDataset, Sample
@@ -10,7 +11,7 @@ from llm_benchmark.utils.logger import logger
 class LCSTSDataset(BaseDataset):
     """LCSTS dataset for Chinese short text summarization."""
 
-    name = "lcsts"
+    name = "hugcyp/LCSTS"
     default_data_dir = ""
 
     def load(
@@ -28,9 +29,7 @@ class LCSTSDataset(BaseDataset):
         }
 
         if split not in file_map:
-            raise ValueError(
-                f"Unknown split: {split}. Available: {list(file_map.keys())}"
-            )
+            raise ValueError(f"Unknown split: {split}. Available: {list(file_map.keys())}")
 
         file_path = data_path / file_map[split]
         if not file_path.exists():
@@ -59,22 +58,36 @@ class LCSTSDataset(BaseDataset):
 
     def create_prompt(self, sample: Sample) -> str:
         """Create Chinese summarization prompt."""
-        return f"请为以下文本生成一个简短的摘要：\n\n{sample.text}\n\n摘要:"
+        return f"""
+        {sample.text}
+
+        请为以上文本生成一个简短的摘要
+        
+        必须将你最后的答案放在<answer></answer>标签中,我们会提取最后一组answer标签作为你的答案
+        """
 
     def postprocess(self, text: str) -> str:
         """Postprocess LCSTS model output.
 
-        Cleans up common artifacts in generated summaries:
-        - Extracts content from thinking tags
-        - Takes only the last line (actual content after thinking)
-        - Removes common hallucination tokens (Russian word "своей")
-        - Strips list prefixes and punctuation
+        Extracts content from <answer></answer> tags and cleans up artifacts.
         """
-        # First extract content from thinking tags
-        text = text.strip().replace("своей", "").strip()
-        # Take the last line (actual content after thinking process)
-        lines = [line.strip() for line in text.split("\n") if line.strip()]
-        text = lines[-1] if lines else ""
+
+        # Extract content from <answer></answer> tags
+        # Find all matches and take the last non-empty one
+        matches = re.findall(r"<answer>(.*?)</answer>", text, re.DOTALL)
+        if not matches:
+            logger.debug(f"Output (last 100 chars): ...{text[-200:]}")
+            raise ValueError("No <answer></answer> tags found in output")
+        # Take the last non-empty match
+        for match in reversed(matches):
+            if match.strip():
+                text = match
+                break
+        else:
+            logger.debug(f"Output (last 100 chars): ...{text[-200:]}")
+            raise ValueError("All <answer></answer> tags are empty in output")
+        # Clean up common artifacts
+        text = text.strip()
         text = text.replace("1. ", "") if text.startswith("1. ") else text
         text = text.replace("- ", "") if text.startswith("- ") else text
         text = text.strip('"，。！')
