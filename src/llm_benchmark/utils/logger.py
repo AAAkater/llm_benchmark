@@ -11,4 +11,4 @@ logger.add(
     level="DEBUG",
     enqueue=True,
 )
-logger.add(sys.stderr, level="INFO")
+logger.add(sys.stderr, level="DEBUG")
