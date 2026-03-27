@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-benchmark = "llm_benchmark.main:main"
+benchmark = "llm_benchmark.cli:main"
 
 [build-system]
 requires = ["hatchling"]

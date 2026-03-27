@@ -1,0 +1,117 @@
+"""CLI interface for LLM benchmark runner."""
+
+import argparse
+import asyncio
+
+from llm_benchmark.client import ClientConfig
+from llm_benchmark.main import BenchmarkConfig, BenchmarkRunner
+from llm_benchmark.utils.logger import logger
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="LLM Sampling Parameter Benchmark")
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        required=True,
+        choices=["lcsts", "xsum", "truthfulqa"],
+        help="Dataset to evaluate on",
+    )
+    parser.add_argument(
+        "--split",
+        type=str,
+        default="test",
+        help="Dataset split to use",
+    )
+    parser.add_argument(
+        "--max-samples",
+        type=int,
+        default=None,
+        help="Maximum number of samples to evaluate",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.7,
+        help="Sampling temperature",
+    )
+    parser.add_argument(
+        "--top-p",
+        type=float,
+        default=0.9,
+        help="Top-p sampling",
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=256,
+        help="Maximum tokens to generate",
+    )
+    parser.add_argument(
+        "--sweep",
+        action="store_true",
+        help="Run a parameter sweep instead of single config",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="results",
+        help="Output directory for results",
+    )
+    parser.add_argument(
+        "--base-url",
+        type=str,
+        default="http://127.0.0.1:1234/v1",
+        help="Base URL for the API server",
+    )
+    parser.add_argument(
+        "--model-name",
+        type=str,
+        default="local-model",
+        help="Model name to use",
+    )
+    return parser.parse_args()
+
+
+async def run_benchmark() -> None:
+    """Main entry point for the benchmark CLI."""
+    args = parse_args()
+
+    # Configure logging
+    logger.add(
+        f"{args.output_dir}/benchmark.log",
+        rotation="10 MB",
+        level="DEBUG",
+    )
+
+    # Create client config
+    client_config = ClientConfig(
+        base_url=args.base_url,
+        model_name=args.model_name,
+    )
+
+    config = BenchmarkConfig(
+        dataset_name=args.dataset,
+        split=args.split,
+        max_samples=args.max_samples,
+        temperature=args.temperature,
+        top_p=args.top_p,
+        max_tokens=args.max_tokens,
+        output_dir=args.output_dir,
+    )
+
+    runner = BenchmarkRunner(
+        client_config=client_config,
+        output_dir=args.output_dir,
+    )
+    await runner.run(config)
+
+
+def main() -> None:
+    """Synchronous entry point for CLI."""
+    asyncio.run(run_benchmark())
+
+
+if __name__ == "__main__":
+    main()
