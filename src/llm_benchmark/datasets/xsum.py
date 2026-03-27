@@ -1,8 +1,9 @@
 """XSum dataset for English news summarization."""
 
-from pathlib import Path
+from typing import Literal
 
 from datasets import load_dataset
+from pydantic import validate_call
 
 from llm_benchmark.datasets.base import BaseDataset, Sample
 from llm_benchmark.utils.logger import logger
@@ -11,29 +12,34 @@ from llm_benchmark.utils.logger import logger
 class XSumDataset(BaseDataset):
     """XSum dataset for English news summarization."""
 
-    name = "xsum"
-    default_data_dir = ""
+    name = "EdinburghNLP/xsum"
+    samples: list[Sample] = []
 
-    def load(
+    @validate_call
+    def __init__(
         self,
-        split: str = "test",
-        data_dir: str | Path | None = None,
+        split: Literal["train", "validation", "test"] = "test",
+        data_dir: str | None = None,
         max_samples: int | None = None,
-    ) -> list[Sample]:
-        """Load XSum dataset."""
-        data_dir = data_dir or self.default_data_dir
-        dataset = load_dataset(
-            "xsum",
-            split=split,
-            data_dir=str(data_dir),
-            trust_remote_code=True,
-        )
+    ) -> None:
+        """Load XSum dataset (internal method).
 
-        samples = []
+        Args:
+            split: Dataset split to load (train, validation, test).
+            data_dir: Optional path to local data directory. If not provided,
+                dataset will be downloaded from Hugging Face.
+            max_samples: Maximum number of samples to load.
+        """
+        # Load from Hugging Face
+        dataset = load_dataset(
+            data_dir or self.name,
+            split=split,
+        ).to_iterable_dataset()
+
         for i, item in enumerate(dataset):
             if max_samples and i >= max_samples:
                 break
-            samples.append(
+            self.samples.append(
                 Sample(
                     id=f"xsum_{item.get('id', i)}",
                     text=item["document"],
@@ -42,8 +48,7 @@ class XSumDataset(BaseDataset):
                 )
             )
 
-        logger.info(f"Loaded {len(samples)} XSum samples from {split} split")
-        return samples
+        logger.info(f"Loaded {len(self.samples)} XSum samples from {split} split")
 
     def create_prompt(self, sample: Sample) -> str:
         """Create English summarization prompt."""

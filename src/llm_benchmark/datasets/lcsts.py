@@ -14,15 +14,16 @@ class LCSTSDataset(BaseDataset):
     """LCSTS dataset for Chinese short text summarization."""
 
     name = "hugcyp/LCSTS"
+    samples: list[Sample] = []
 
     @validate_call
-    def load(
+    def __init__(
         self,
         split: Literal["train", "validation", "test"] = "test",
         data_dir: str | None = None,
         max_samples: int | None = None,
-    ) -> list[Sample]:
-        """Load LCSTS dataset.
+    ) -> None:
+        """Load LCSTS dataset (internal method).
 
         Args:
             split: Dataset split to load (train, validation, test).
@@ -37,8 +38,6 @@ class LCSTSDataset(BaseDataset):
         if split not in ["train", "validation", "test"]:
             raise ValueError(f"Unknown split: {split}. Available: {['train', 'validation', 'test']}")
 
-        samples: list[Sample] = []
-
         # Load from Hugging Face
         dataset = load_dataset(
             data_dir or self.name,
@@ -52,7 +51,7 @@ class LCSTSDataset(BaseDataset):
 
             # LCSTS has empty summaries in test set, use the text as reference
             summary: str = item["summary"] if item["summary"] else item["text"][:100]
-            samples.append(
+            self.samples.append(
                 Sample(
                     id=f"lcsts_{i}",
                     text=item["text"],
@@ -61,8 +60,8 @@ class LCSTSDataset(BaseDataset):
                 )
             )
 
-        logger.info(f"Loaded {len(samples)} LCSTS samples from {split} split")
-        return samples
+        logger.info(f"Loaded {len(self.samples)} LCSTS samples from {split} split")
+        return
 
     def create_prompt(self, sample: Sample) -> str:
         """Create Chinese summarization prompt."""

@@ -1,7 +1,9 @@
 """TruthfulQA dataset for truthfulness evaluation."""
 
-import csv
-from pathlib import Path
+from typing import Literal
+
+from datasets import load_dataset
+from pydantic import validate_call
 
 from llm_benchmark.datasets.base import BaseDataset, Sample
 from llm_benchmark.utils.logger import logger
@@ -10,56 +12,50 @@ from llm_benchmark.utils.logger import logger
 class TruthfulQADataset(BaseDataset):
     """TruthfulQA dataset for truthfulness evaluation."""
 
-    name = "truthfulqa"
-    default_data_dir = ""
+    name = "domenicrosati/TruthfulQA"
+    samples: list[Sample] = []
 
-    def load(
+    @validate_call
+    def __init__(
         self,
-        split: str = "validation",
-        data_dir: str | Path | None = None,
+        split: Literal["train", "validation", "test"] = "test",
+        data_dir: str | None = None,
         max_samples: int | None = None,
-    ) -> list[Sample]:
-        """Load TruthfulQA dataset.
+    ) -> None:
+        """Load TruthfulQA dataset (internal method).
 
-        Note: TruthfulQA is typically used for multiple-choice evaluation,
-        but here we use it for generation mode where the model generates answers.
+        Args:
+            split: Dataset split to load (train, validation).
+            data_dir: Optional path to local data directory. If not provided,
+                uses the default data directory.
+            max_samples: Maximum number of samples to load.
         """
-        data_path = Path(data_dir or self.default_data_dir)
-        file_map = {
-            "validation": "TruthfulQA.csv",
-            "train": "train.csv",
-        }
+        # Load from Hugging Face
+        dataset = load_dataset(
+            data_dir or self.name,
+            # Due to constraints of huggingface the dataset is loaded into a "train" split.
+            split="train",
+        ).to_iterable_dataset()
 
-        if split not in file_map:
-            raise ValueError(f"Unknown split: {split}. Available: {list(file_map.keys())}")
-
-        file_path = data_path / file_map[split]
-        if not file_path.exists():
-            raise FileNotFoundError(f"TruthfulQA file not found: {file_path}")
-
-        samples = []
-        with open(file_path, encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for i, row in enumerate(reader):
-                if max_samples and i >= max_samples:
-                    break
-                samples.append(
-                    Sample(
-                        id=f"truthfulqa_{i}",
-                        text=row["Question"],
-                        reference=row["Best Answer"],
-                        metadata={
-                            "source": "truthfulqa",
-                            "type": row.get("Type", ""),
-                            "category": row.get("Category", ""),
-                            "correct_answers": row.get("Correct Answers", ""),
-                            "incorrect_answers": row.get("Incorrect Answers", ""),
-                        },
-                    )
+        for i, item in enumerate(dataset):
+            if max_samples and i >= max_samples:
+                break
+            self.samples.append(
+                Sample(
+                    id=f"truthfulqa_{i}",
+                    text=item["Question"],
+                    reference=item["Best Answer"],
+                    metadata={
+                        "source": "truthfulqa",
+                        "type": item["Type"],
+                        "category": item["Category"],
+                        "correct_answers": item["Correct Answers"],
+                        "incorrect_answers": item["Incorrect Answers"],
+                    },
                 )
+            )
 
-        logger.info(f"Loaded {len(samples)} TruthfulQA samples from {split} split")
-        return samples
+        logger.info(f"Loaded {len(self.samples)} TruthfulQA samples from {split} split")
 
     def create_prompt(self, sample: Sample) -> str:
         """Create truthful answer prompt."""

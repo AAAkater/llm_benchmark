@@ -21,27 +21,24 @@ class BaseDataset(ABC):
     """Abstract base class for dataset loaders.
 
     Each dataset implementation should inherit from this class and implement
-    the required abstract methods.
+    the required abstract methods. Data is loaded during construction.
     """
 
     name: str = "base"
+    samples: list[Sample]
 
-    @abstractmethod
-    def load(
+    def __init__(
         self,
         split: Literal["train", "validation", "test"] = "test",
         data_dir: str | None = None,
         max_samples: int | None = None,
-    ) -> list[Sample]:
-        """Load dataset samples.
+    ) -> None:
+        """Initialize dataset and load samples.
 
         Args:
             split: Dataset split to load.
             data_dir: Path to the data directory.
             max_samples: Maximum number of samples to load.
-
-        Returns:
-            List of Sample objects.
         """
         ...
 
