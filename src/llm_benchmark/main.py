@@ -3,7 +3,7 @@
 import asyncio
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 from pydantic import BaseModel
@@ -19,10 +19,7 @@ from llm_benchmark.datasets import (
     get_dataset,
     load_dataset_by_name,
 )
-from llm_benchmark.evaluation import (
-    EvaluationResult,
-    create_evaluator_for_dataset,
-)
+from llm_benchmark.evaluators.rouge import EvaluationResult, RougeScores
 from llm_benchmark.utils.logger import logger
 
 
@@ -31,7 +28,7 @@ class BenchmarkConfig(BaseModel):
 
     # Dataset settings
     dataset_name: str
-    split: str = "test"
+    split: Literal["train", "validation", "test"] = "test"
     data_dir: str | None = None
     max_samples: int | None = None
 
@@ -44,8 +41,6 @@ class BenchmarkConfig(BaseModel):
     presence_penalty: float = 0.0
 
     # Batch settings
-    use_batch_api: bool = False  # 本地服务器通常不支持 Batch API
-    batch_size: int = 100
     max_concurrent: int = 10  # 降低并发数，避免服务器过载
 
     # Output settings
@@ -74,8 +69,6 @@ class BenchmarkConfig(BaseModel):
             "max_tokens": self.max_tokens,
             "frequency_penalty": self.frequency_penalty,
             "presence_penalty": self.presence_penalty,
-            "use_batch_api": self.use_batch_api,
-            "batch_size": self.batch_size,
         }
 
 
@@ -92,18 +85,17 @@ class BenchmarkResult(BaseModel):
     def to_dataframe(self) -> pd.DataFrame:
         """Convert results to a pandas DataFrame."""
         rows = []
-        for i, (sample, pred, eval_result) in enumerate(
-            zip(self.samples, self.predictions, self.evaluation_results)
-        ):
+        for i, (sample, pred, eval_result) in enumerate(zip(self.samples, self.predictions, self.evaluation_results)):
+            scores = RougeScores.model_validate(eval_result.scores)
             rows.append(
                 {
                     "sample_id": sample.id,
                     "text": sample.text,
                     "reference": sample.reference,
                     "prediction": pred,
-                    "rouge1": eval_result.rouge_scores.rouge1,
-                    "rouge2": eval_result.rouge_scores.rouge2,
-                    "rougeL": eval_result.rouge_scores.rougeL,
+                    "rouge1": scores.rouge1,
+                    "rouge2": scores.rouge2,
+                    "rougeL": scores.rougeL,
                     **self.config.to_dict(),
                     "timestamp": self.timestamp,
                 }
@@ -126,19 +118,6 @@ class BenchmarkResult(BaseModel):
                 }
             ]
         )
-
-
-def create_prompt(sample: Sample, dataset_name: str) -> str:
-    """Create a prompt for the model based on the dataset type.
-
-    Args:
-        sample: The sample to create a prompt for.
-        dataset_name: Name of the dataset.
-
-    Returns:
-        Formatted prompt string.
-    """
-    return create_prompt_for_dataset(dataset_name, sample)
 
 
 class BenchmarkRunner:
@@ -175,7 +154,7 @@ class BenchmarkRunner:
         )
 
         # Create prompts
-        prompts = [create_prompt(s, config.dataset_name) for s in samples]
+        prompts = [create_prompt_for_dataset(config.dataset_name, s) for s in samples]
 
         # Get predictions
         logger.info(f"Starting inference for {len(prompts)} prompts...")
@@ -199,7 +178,7 @@ class BenchmarkRunner:
         logger.info(f"Applied postprocessing for {config.dataset_name}, {len(predictions)} samples retained")
 
         # Evaluate
-        evaluator = create_evaluator_for_dataset(config.dataset_name)
+        evaluator = dataset.get_evaluator()
         eval_results, avg_scores = evaluator.evaluate(
             predictions=predictions,
             references=[s.reference for s in samples],
@@ -244,9 +223,7 @@ class BenchmarkRunner:
         df = result.to_dataframe()
         # Replace / with _ to avoid path issues (e.g., "hugcyp/LCSTS" -> "hugcyp_LCSTS")
         safe_dataset_name = result.config.dataset_name.replace("/", "_")
-        detail_path = (
-            self.output_dir / f"{safe_dataset_name}_{result.timestamp}.jsonl"
-        )
+        detail_path = self.output_dir / f"{safe_dataset_name}_{result.timestamp}.jsonl"
         with open(detail_path, "w", encoding="utf-8") as f:
             for record in df.to_dict(orient="records"):
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -260,58 +237,6 @@ class BenchmarkRunner:
             for record in summary_df.to_dict(orient="records"):
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
         logger.info(f"Updated summary at {summary_path}")
-
-
-async def run_sampling_sweep(
-    dataset_name: str,
-    temperatures: list[float] | None = None,
-    top_ps: list[float] | None = None,
-    max_samples: int = 100,
-    output_dir: str = "results",
-    client_config: ClientConfig | None = None,
-) -> list[BenchmarkResult]:
-    """Run a sweep over sampling parameters.
-
-    Args:
-        dataset_name: Dataset to evaluate on.
-        temperatures: List of temperatures to test.
-        top_ps: List of top_p values to test.
-        max_samples: Maximum samples per run.
-        output_dir: Output directory for results.
-        client_config: Optional client configuration.
-
-    Returns:
-        List of BenchmarkResult objects.
-    """
-    temperatures = temperatures or [0.0, 0.3, 0.7, 1.0]
-    top_ps = top_ps or [0.8, 0.9, 0.95, 1.0]
-
-    runner = BenchmarkRunner(client_config=client_config, output_dir=output_dir)
-    results = []
-
-    # Temperature sweep
-    logger.info("Running temperature sweep...")
-    for temp in temperatures:
-        config = BenchmarkConfig(
-            dataset_name=dataset_name,
-            temperature=temp,
-            max_samples=max_samples,
-        )
-        result = await runner.run(config)
-        results.append(result)
-
-    # Top-p sweep
-    logger.info("Running top-p sweep...")
-    for top_p in top_ps:
-        config = BenchmarkConfig(
-            dataset_name=dataset_name,
-            top_p=top_p,
-            max_samples=max_samples,
-        )
-        result = await runner.run(config)
-        results.append(result)
-
-    return results
 
 
 async def main() -> None:
@@ -395,29 +320,21 @@ async def main() -> None:
         model_name=args.model_name,
     )
 
-    if args.sweep:
-        await run_sampling_sweep(
-            dataset_name=args.dataset,
-            max_samples=args.max_samples or 100,
-            output_dir=args.output_dir,
-            client_config=client_config,
-        )
-    else:
-        config = BenchmarkConfig(
-            dataset_name=args.dataset,
-            split=args.split,
-            max_samples=args.max_samples,
-            temperature=args.temperature,
-            top_p=args.top_p,
-            max_tokens=args.max_tokens,
-            output_dir=args.output_dir,
-        )
+    config = BenchmarkConfig(
+        dataset_name=args.dataset,
+        split=args.split,
+        max_samples=args.max_samples,
+        temperature=args.temperature,
+        top_p=args.top_p,
+        max_tokens=args.max_tokens,
+        output_dir=args.output_dir,
+    )
 
-        runner = BenchmarkRunner(
-            client_config=client_config,
-            output_dir=args.output_dir,
-        )
-        await runner.run(config)
+    runner = BenchmarkRunner(
+        client_config=client_config,
+        output_dir=args.output_dir,
+    )
+    await runner.run(config)
 
 
 if __name__ == "__main__":
