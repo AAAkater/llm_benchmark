@@ -15,9 +15,7 @@ from llm_benchmark.client import (
 )
 from llm_benchmark.datasets import (
     Sample,
-    create_prompt_for_dataset,
     get_dataset,
-    load_dataset_by_name,
 )
 from llm_benchmark.evaluators.rouge import EvaluationResult, RougeScores
 from llm_benchmark.utils.logger import logger
@@ -146,15 +144,16 @@ class BenchmarkRunner:
         logger.info(f"Config: {config.to_dict()}")
 
         # Load dataset
-        samples = load_dataset_by_name(
+        dataset = get_dataset(
             name=config.dataset_name,
             split=config.split,
             data_dir=config.data_dir,
             max_samples=config.max_samples,
         )
+        samples = dataset.samples
 
         # Create prompts
-        prompts = [create_prompt_for_dataset(config.dataset_name, s) for s in samples]
+        prompts = [dataset.create_prompt(s) for s in samples]
 
         # Get predictions
         logger.info(f"Starting inference for {len(prompts)} prompts...")
@@ -162,7 +161,6 @@ class BenchmarkRunner:
         logger.info(f"Inference completed, got {len(predictions)} predictions")
 
         # Postprocess predictions
-        dataset = get_dataset(config.dataset_name)
         processed_predictions = []
         processed_samples = []
         for sample, pred in zip(samples, predictions):
