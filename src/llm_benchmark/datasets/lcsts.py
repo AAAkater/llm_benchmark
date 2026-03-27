@@ -4,6 +4,7 @@ import re
 from typing import Literal
 
 from datasets import load_dataset
+from pydantic import validate_call
 
 from llm_benchmark.datasets.base import BaseDataset, Sample
 from llm_benchmark.utils.logger import logger
@@ -14,6 +15,7 @@ class LCSTSDataset(BaseDataset):
 
     name = "hugcyp/LCSTS"
 
+    @validate_call
     def load(
         self,
         split: Literal["train", "validation", "test"] = "test",
@@ -42,14 +44,14 @@ class LCSTSDataset(BaseDataset):
             data_dir or self.name,
             split=split,
             trust_remote_code=not data_dir,
-        )
+        ).to_iterable_dataset()
 
         for i, item in enumerate(dataset):
             if max_samples and i >= max_samples:
                 break
 
             # LCSTS has empty summaries in test set, use the text as reference
-            summary = item.get("summary", "") or item.get("text", "")[:100]
+            summary: str = item["summary"] if item["summary"] else item["text"][:100]
             samples.append(
                 Sample(
                     id=f"lcsts_{i}",
