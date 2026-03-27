@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from llm_benchmark.evaluators.base import BaseEvaluator
+
 
 class Sample(BaseModel):
     """A single sample for evaluation."""
@@ -64,5 +66,14 @@ class BaseDataset(ABC):
 
         Returns:
             Cleaned output text.
+        """
+        ...
+
+    @abstractmethod
+    def get_evaluator(self) -> BaseEvaluator:
+        """Get the appropriate evaluator for this dataset.
+
+        Returns:
+            BaseEvaluator configured for the dataset's language.
         """
         ...

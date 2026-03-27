@@ -31,9 +31,7 @@ class TruthfulQADataset(BaseDataset):
         }
 
         if split not in file_map:
-            raise ValueError(
-                f"Unknown split: {split}. Available: {list(file_map.keys())}"
-            )
+            raise ValueError(f"Unknown split: {split}. Available: {list(file_map.keys())}")
 
         file_path = data_path / file_map[split]
         if not file_path.exists():
@@ -71,3 +69,9 @@ class TruthfulQADataset(BaseDataset):
         """Postprocess TruthfulQA model output."""
         text = text.strip().split("\n")[0]
         return text
+
+    def get_evaluator(self):
+        """Get the ROUGE evaluator for English text."""
+        from llm_benchmark.evaluators.rouge import RougeEvaluator
+
+        return RougeEvaluator(language="en")

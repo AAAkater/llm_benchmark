@@ -68,6 +68,13 @@ class LCSTSDataset(BaseDataset):
         {sample.text}
 
         请为以上文本生成一个简短的摘要
+
+        这些为参考示例
+        文本: 12月12日,多家被立案稽查的沪市公司集体对外发布退市风险提示公告,*ST国创位列""黑名单""。目前证监会调查仍在进行,*ST国创尚未收到此次立案调查书面结论意见。一旦立案调查事项触及相关规定,公司股票将被实施退市风险警示。"
+        摘要: 信披违规外加业绩亏损*ST国创退市风险概率大增
+
+        文本: 据微信公众号“界面”报道,4日上午10点左右,中国发改委反垄断调查小组突击查访奔驰上海办事处,调取数据材料,并对多名奔驰高管进行了约谈。截止昨日晚9点,包括北京梅赛德斯-奔驰销售服务有限公司东区总经理在内的多名管理人员仍留在上海办公室内
+        摘要: 发改委反垄断调查小组突击调查奔驰上海办事处
         
         必须将你最后的答案放在<answer></answer>标签中,我们会提取最后一组answer标签作为你的答案
         """
@@ -96,5 +103,11 @@ class LCSTSDataset(BaseDataset):
         text = text.strip()
         text = text.replace("1. ", "") if text.startswith("1. ") else text
         text = text.replace("- ", "") if text.startswith("- ") else text
-        text = text.strip('"，。！')
+        text = text.strip('",。！')
         return text
+
+    def get_evaluator(self):
+        """Get the ROUGE evaluator for Chinese text."""
+        from llm_benchmark.evaluators.rouge import RougeEvaluator
+
+        return RougeEvaluator(language="zh")

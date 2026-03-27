@@ -55,3 +55,9 @@ class XSumDataset(BaseDataset):
         text = text.replace("1. ", "") if text.startswith("1. ") else text
         text = text.replace("- ", "") if text.startswith("- ") else text
         return text
+
+    def get_evaluator(self):
+        """Get the ROUGE evaluator for English text."""
+        from llm_benchmark.evaluators.rouge import RougeEvaluator
+
+        return RougeEvaluator(language="en")
