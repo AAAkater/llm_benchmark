@@ -13,6 +13,34 @@ from pydantic import BaseModel, Field
 from llm_benchmark.utils.logger import logger
 
 
+class InferenceResult(BaseModel):
+    """Result of a single inference request."""
+
+    response: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    latency_ms: float = 0.0  # Time in milliseconds
+
+    @property
+    def total_tokens(self) -> int:
+        """Total tokens processed."""
+        return self.input_tokens + self.output_tokens
+
+    @property
+    def output_tps(self) -> float:
+        """Output tokens per second."""
+        if self.latency_ms > 0 and self.output_tokens > 0:
+            return self.output_tokens / (self.latency_ms / 1000.0)
+        return 0.0
+
+    @property
+    def total_tps(self) -> float:
+        """Total tokens per second."""
+        if self.latency_ms > 0 and self.total_tokens > 0:
+            return self.total_tokens / (self.latency_ms / 1000.0)
+        return 0.0
+
+
 class SamplingConfig(BaseModel):
     """Sampling parameters for LLM generation."""
 
@@ -55,57 +83,60 @@ class BatchClient:
     async def query_single(
         self,
         prompt: str,
-        sampling: SamplingConfig | None = None,
-        stream: bool = True,
-    ) -> str:
-        """Query the model with a single prompt (non-batch).
+        sampling: SamplingConfig,
+    ) -> InferenceResult:
+        """Query the model with a single prompt using streaming.
 
         Args:
             prompt: The prompt to send.
             sampling: Sampling configuration.
-            stream: Whether to use streaming output.
 
         Returns:
-            Model response.
+            InferenceResult with response, token counts, and latency.
         """
-        sampling = sampling or SamplingConfig()
+        import time
 
         logger.debug(f"Sending request with prompt length: {len(prompt)}")
+        start_time = time.perf_counter()
 
         extra_body = {"chat_template_kwargs": {"enable_thinking": True}} if self.enable_thinking else None
 
-        if stream:
-            # 流式输出（不打印，只收集）
-            stream_resp = await self._client.chat.completions.create(
-                model=self.model_name,
-                messages=[{"role": "user", "content": prompt}],
-                stream=True,
-                extra_body=extra_body,
-                **sampling.to_api_params(),
-            )
-            chunks = []
-            async for chunk in stream_resp:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    chunks.append(chunk.choices[0].delta.content)
-            return "".join(chunks).strip()
-        else:
-            # 非流式
-            response = await self._client.chat.completions.create(
-                model=self.model_name,
-                messages=[{"role": "user", "content": prompt}],
-                extra_body=extra_body,
-                **sampling.to_api_params(),
-            )
-            logger.debug("Received response")
-            content = response.choices[0].message.content
-            return content.strip() if content else ""
+        # 流式输出（不打印，只收集）
+        stream_resp = await self._client.chat.completions.create(
+            model=self.model_name,
+            messages=[{"role": "user", "content": prompt}],
+            stream=True,
+            stream_options={"include_usage": True},  # Request token usage in stream
+            extra_body=extra_body,
+            **sampling.to_api_params(),
+        )
+        chunks = []
+        input_tokens = 0
+        output_tokens = 0
+        async for chunk in stream_resp:
+            if chunk.choices and chunk.choices[0].delta.content:
+                chunks.append(chunk.choices[0].delta.content)
+            # Get usage from the final chunk
+            if hasattr(chunk, "usage") and chunk.usage:
+                input_tokens = chunk.usage.prompt_tokens or 0
+                output_tokens = chunk.usage.completion_tokens or 0
+        response = "".join(chunks).strip()
+
+        latency_ms = (time.perf_counter() - start_time) * 1000
+
+        return InferenceResult(
+            response=response,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            latency_ms=latency_ms,
+        )
 
     async def query_batch_concurrent(
         self,
         prompts: list[str],
-        sampling: SamplingConfig | None = None,
+        sampling: SamplingConfig,
         max_concurrent: int = 10,
-    ) -> list[str]:
+    ) -> list[InferenceResult]:
         """Query multiple prompts concurrently (non-batch API).
 
         This uses regular async requests instead of the Batch API,
@@ -117,18 +148,17 @@ class BatchClient:
             max_concurrent: Maximum concurrent requests.
 
         Returns:
-            List of responses in order.
+            List of InferenceResult in order.
         """
-        sampling = sampling or SamplingConfig()
         semaphore = asyncio.Semaphore(max_concurrent)
 
-        async def query_with_semaphore(prompt: str) -> str:
+        async def query_with_semaphore(prompt: str) -> InferenceResult:
             async with semaphore:
                 try:
                     return await self.query_single(prompt, sampling)
                 except Exception as e:
                     logger.error(f"Request failed: {e}")
-                    return f"ERROR: {e}"
+                    return InferenceResult(response=f"ERROR: {e}")
 
         tasks = [query_with_semaphore(p) for p in prompts]
         return await asyncio.gather(*tasks)
