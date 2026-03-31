@@ -5,6 +5,7 @@ description = "LLM sampling parameters benchmark for summarization datasets"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "anthropic>=0.86.0",
     "datasets>=4.8.3",
     "jieba>=0.42.1",
     "loguru>=0.7.3",
