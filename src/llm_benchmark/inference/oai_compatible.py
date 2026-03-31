@@ -63,7 +63,7 @@ class SamplingConfig(BaseModel):
         return params
 
 
-class BatchClient:
+class OAIBatchClient:
     """Client for OpenAI Batch API operations.
 
     Accepts an AsyncOpenAI instance directly, allowing users to configure

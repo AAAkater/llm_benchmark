@@ -14,8 +14,8 @@ from llm_benchmark.datasets import (
 )
 from llm_benchmark.evaluators.rouge import EvaluationResult
 from llm_benchmark.inference import (
-    BatchClient,
     InferenceResult,
+    OAIBatchClient,
     SamplingConfig,
 )
 from llm_benchmark.utils import logger
@@ -189,7 +189,7 @@ class BenchmarkRunner:
         enable_thinking: bool = False,
         output_dir: str = "results",
     ):
-        self.client = BatchClient(client, model_name, enable_thinking)
+        self.client = OAIBatchClient(client, model_name, enable_thinking)
         self.dataset = dataset
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
