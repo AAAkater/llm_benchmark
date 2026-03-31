@@ -5,6 +5,7 @@ import asyncio
 
 from openai import AsyncOpenAI
 
+from llm_benchmark.datasets import get_dataset
 from llm_benchmark.main import BenchmarkConfig, BenchmarkRunner
 from llm_benchmark.utils.logger import logger
 
@@ -89,19 +90,24 @@ async def run_benchmark() -> None:
     # Create OpenAI client
     client = AsyncOpenAI(base_url=args.base_url, api_key="sk-dummy")
 
-    config = BenchmarkConfig(
-        dataset_name=args.dataset,
+    # Load dataset
+    dataset = get_dataset(
+        name=args.dataset,
         split=args.split,
         max_samples=args.max_samples,
+    )
+
+    # Create benchmark config (sampling parameters only)
+    config = BenchmarkConfig(
         temperature=args.temperature,
         top_p=args.top_p,
         max_tokens=args.max_tokens,
-        output_dir=args.output_dir,
     )
 
     runner = BenchmarkRunner(
         client=client,
         model_name=args.model_name,
+        dataset=dataset,
         output_dir=args.output_dir,
     )
     await runner.run(config)

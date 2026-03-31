@@ -1,17 +1,16 @@
 """Main benchmark runner for LLM sampling parameter evaluation."""
 
-import asyncio
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import pandas as pd
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from llm_benchmark.datasets import (
+    BaseDataset,
     Sample,
-    get_dataset,
 )
 from llm_benchmark.evaluators.rouge import EvaluationResult, RougeScores
 from llm_benchmark.inference import (
@@ -22,13 +21,7 @@ from llm_benchmark.utils.logger import logger
 
 
 class BenchmarkConfig(BaseModel):
-    """Configuration for a benchmark run."""
-
-    # Dataset settings
-    dataset_name: str
-    split: Literal["train", "validation", "test"] = "test"
-    data_dir: str | None = None
-    max_samples: int | None = None
+    """Configuration for a benchmark run - sampling parameters only."""
 
     # Sampling parameters to test
     temperature: float = 0.7
@@ -58,9 +51,6 @@ class BenchmarkConfig(BaseModel):
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for logging/saving."""
         return {
-            "dataset_name": self.dataset_name,
-            "split": self.split,
-            "max_samples": self.max_samples,
             "temperature": self.temperature,
             "top_p": self.top_p,
             "top_k": self.top_k,
@@ -73,6 +63,7 @@ class BenchmarkConfig(BaseModel):
 class BenchmarkResult(BaseModel):
     """Result of a benchmark run."""
 
+    dataset_name: str
     config: BenchmarkConfig
     samples: list[Sample]
     predictions: list[str]
@@ -94,6 +85,7 @@ class BenchmarkResult(BaseModel):
                     "rouge1": scores.rouge1,
                     "rouge2": scores.rouge2,
                     "rougeL": scores.rougeL,
+                    "dataset": self.dataset_name,
                     **self.config.to_dict(),
                     "timestamp": self.timestamp,
                 }
@@ -105,8 +97,7 @@ class BenchmarkResult(BaseModel):
         return pd.DataFrame(
             [
                 {
-                    "dataset": self.config.dataset_name,
-                    "split": self.config.split,
+                    "dataset": self.dataset_name,
                     "n_samples": len(self.samples),
                     "avg_rouge1": self.avg_scores["rouge1"],
                     "avg_rouge2": self.avg_scores["rouge2"],
@@ -125,37 +116,36 @@ class BenchmarkRunner:
         self,
         client: AsyncOpenAI,
         model_name: str,
+        dataset: BaseDataset,
         enable_thinking: bool = False,
         output_dir: str = "results",
     ):
         self.client = BatchClient(client, model_name, enable_thinking)
+        self.dataset = dataset
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    async def run(self, config: BenchmarkConfig) -> BenchmarkResult:
+    async def run(self, config: BenchmarkConfig | None = None) -> BenchmarkResult:
         """Run a benchmark with the given configuration.
 
         Args:
-            config: Benchmark configuration.
+            config: Benchmark configuration (sampling parameters).
+                   If None, uses default BenchmarkConfig().
 
         Returns:
             BenchmarkResult with all evaluation data.
         """
+        if config is None:
+            config = BenchmarkConfig()
+
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        logger.info(f"Starting benchmark: {config.dataset_name}")
+        logger.info(f"Starting benchmark: {self.dataset.name}")
         logger.info(f"Config: {config.to_dict()}")
 
-        # Load dataset
-        dataset = get_dataset(
-            name=config.dataset_name,
-            split=config.split,
-            data_dir=config.data_dir,
-            max_samples=config.max_samples,
-        )
-        samples = dataset.samples
+        samples = self.dataset.samples
 
         # Create prompts
-        prompts = [dataset.create_prompt(s) for s in samples]
+        prompts = [self.dataset.create_prompt(s) for s in samples]
 
         # Get predictions
         logger.info(f"Starting inference for {len(prompts)} prompts...")
@@ -167,7 +157,7 @@ class BenchmarkRunner:
         processed_samples = []
         for sample, pred in zip(samples, predictions):
             try:
-                processed_pred = dataset.postprocess(pred)
+                processed_pred = self.dataset.postprocess(pred)
                 processed_predictions.append(processed_pred)
                 processed_samples.append(sample)
             except Exception as e:
@@ -175,10 +165,10 @@ class BenchmarkRunner:
                 continue
         predictions = processed_predictions
         samples = processed_samples
-        logger.info(f"Applied postprocessing for {config.dataset_name}, {len(predictions)} samples retained")
+        logger.info(f"Applied postprocessing for {self.dataset.name}, {len(predictions)} samples retained")
 
         # Evaluate
-        evaluator = dataset.get_evaluator()
+        evaluator = self.dataset.get_evaluator()
         eval_results, avg_scores = evaluator.evaluate(
             predictions=predictions,
             references=[s.reference for s in samples],
@@ -186,6 +176,7 @@ class BenchmarkRunner:
         )
 
         result = BenchmarkResult(
+            dataset_name=self.dataset.name,
             config=config,
             samples=samples,
             predictions=predictions,
@@ -222,7 +213,7 @@ class BenchmarkRunner:
         # Save detailed results
         df = result.to_dataframe()
         # Replace / with _ to avoid path issues (e.g., "hugcyp/LCSTS" -> "hugcyp_LCSTS")
-        safe_dataset_name = result.config.dataset_name.replace("/", "_")
+        safe_dataset_name = result.dataset_name.replace("/", "_")
         detail_path = self.output_dir / f"{safe_dataset_name}_{result.timestamp}.jsonl"
         with open(detail_path, "w", encoding="utf-8") as f:
             for record in df.to_dict(orient="records"):
