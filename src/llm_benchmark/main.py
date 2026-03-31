@@ -12,7 +12,7 @@ from llm_benchmark.datasets import (
     BaseDataset,
     Sample,
 )
-from llm_benchmark.evaluators.rouge import EvaluationResult, RougeScores
+from llm_benchmark.evaluators.rouge import EvaluationResult
 from llm_benchmark.inference import (
     BatchClient,
     InferenceResult,
@@ -133,18 +133,16 @@ class BenchmarkResult(BaseModel):
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convert results to a pandas DataFrame."""
-        rows = []
-        for i, (sample, pred, eval_result) in enumerate(zip(self.samples, self.predictions, self.evaluation_results)):
-            scores = RougeScores.model_validate(eval_result.scores)
+        rows: list[dict[str, Any]] = []
+        for sample, pred, eval_result in zip(self.samples, self.predictions, self.evaluation_results):
+            scores_dict = eval_result.scores.model_dump()
             rows.append(
                 {
                     "sample_id": sample.id,
                     "text": sample.text,
                     "reference": sample.reference,
                     "prediction": pred,
-                    "rouge1": scores.rouge1,
-                    "rouge2": scores.rouge2,
-                    "rougeL": scores.rougeL,
+                    **scores_dict,
                     "dataset": self.dataset_name,
                     **self.config.to_dict(),
                     "timestamp": self.timestamp,
@@ -154,14 +152,14 @@ class BenchmarkResult(BaseModel):
 
     def summary_dataframe(self) -> pd.DataFrame:
         """Create a summary DataFrame with average scores."""
+        # Dynamically include all average scores with "avg_" prefix
+        avg_scores_dict = {f"avg_{k}": v for k, v in self.avg_scores.items()}
         return pd.DataFrame(
             [
                 {
                     "dataset": self.dataset_name,
                     "n_samples": len(self.samples),
-                    "avg_rouge1": self.avg_scores["rouge1"],
-                    "avg_rouge2": self.avg_scores["rouge2"],
-                    "avg_rougeL": self.avg_scores["rougeL"],
+                    **avg_scores_dict,
                     # TPS stats
                     "total_input_tokens": self.tps_stats.total_input_tokens,
                     "total_output_tokens": self.tps_stats.total_output_tokens,
@@ -231,9 +229,9 @@ class BenchmarkRunner:
         )
 
         # Postprocess predictions
-        processed_predictions = []
-        processed_samples = []
-        processed_results = []
+        processed_predictions: list[str] = []
+        processed_samples: list[Sample] = []
+        processed_results: list[InferenceResult] = []
         for sample, inf_result in zip(samples, inference_results):
             try:
                 processed_pred = self.dataset.postprocess(inf_result.response)
