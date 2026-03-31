@@ -9,7 +9,6 @@ from typing import Any
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from llm_benchmark.utils.logger import logger
 
@@ -36,48 +35,22 @@ class SamplingConfig(BaseModel):
         return params
 
 
-class ClientConfig(BaseSettings):
-    """Configuration for the OpenAI client."""
-
-    model_config = SettingsConfigDict(
-        env_prefix="OPENAI_",
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
-
-    base_url: str = Field(
-        default="http://127.0.0.1:1234/v1",
-        description="Base URL for the OpenAI-compatible API server",
-    )
-    api_key: str = Field(
-        default="sk-dummy",
-        description="API key for authentication",
-    )
-    model_name: str = Field(
-        default="local-model",
-        description="Name of the model to use",
-    )
-    timeout: float = Field(
-        default=60.0,
-        description="Request timeout in seconds",
-    )
-    enable_thinking: bool = Field(
-        default=False,
-        description="Enable thinking/reasoning mode for the model",
-    )
-
-
 class BatchClient:
-    """Client for OpenAI Batch API operations."""
+    """Client for OpenAI Batch API operations.
 
-    def __init__(self, config: ClientConfig | None = None):
-        self.config = config or ClientConfig()
-        self._client = AsyncOpenAI(
-            base_url=self.config.base_url,
-            api_key=self.config.api_key,
-            timeout=self.config.timeout,
-        )
+    Accepts an AsyncOpenAI instance directly, allowing users to configure
+    API connection parameters (base_url, api_key, timeout) themselves.
+    """
+
+    def __init__(
+        self,
+        client: AsyncOpenAI,
+        model_name: str,
+        enable_thinking: bool = False,
+    ):
+        self._client = client
+        self.model_name = model_name
+        self.enable_thinking = enable_thinking
 
     async def query_single(
         self,
@@ -99,12 +72,12 @@ class BatchClient:
 
         logger.debug(f"Sending request with prompt length: {len(prompt)}")
 
-        extra_body = {"chat_template_kwargs": {"enable_thinking": True}} if self.config.enable_thinking else None
+        extra_body = {"chat_template_kwargs": {"enable_thinking": True}} if self.enable_thinking else None
 
         if stream:
             # 流式输出（不打印，只收集）
             stream_resp = await self._client.chat.completions.create(
-                model=self.config.model_name,
+                model=self.model_name,
                 messages=[{"role": "user", "content": prompt}],
                 stream=True,
                 extra_body=extra_body,
@@ -118,7 +91,7 @@ class BatchClient:
         else:
             # 非流式
             response = await self._client.chat.completions.create(
-                model=self.config.model_name,
+                model=self.model_name,
                 messages=[{"role": "user", "content": prompt}],
                 extra_body=extra_body,
                 **sampling.to_api_params(),
