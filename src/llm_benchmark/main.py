@@ -6,18 +6,18 @@ from pathlib import Path
 from typing import Any, Literal
 
 import pandas as pd
+from openai import AsyncOpenAI
 from pydantic import BaseModel
 
-from llm_benchmark.client import (
-    BatchClient,
-    ClientConfig,
-    SamplingConfig,
-)
 from llm_benchmark.datasets import (
     Sample,
     get_dataset,
 )
 from llm_benchmark.evaluators.rouge import EvaluationResult, RougeScores
+from llm_benchmark.inference import (
+    BatchClient,
+    SamplingConfig,
+)
 from llm_benchmark.utils.logger import logger
 
 
@@ -123,10 +123,12 @@ class BenchmarkRunner:
 
     def __init__(
         self,
-        client_config: ClientConfig | None = None,
+        client: AsyncOpenAI,
+        model_name: str,
+        enable_thinking: bool = False,
         output_dir: str = "results",
     ):
-        self.client = BatchClient(client_config)
+        self.client = BatchClient(client, model_name, enable_thinking)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 

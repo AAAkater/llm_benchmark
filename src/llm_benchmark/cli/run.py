@@ -3,7 +3,8 @@
 import argparse
 import asyncio
 
-from llm_benchmark.client import ClientConfig
+from openai import AsyncOpenAI
+
 from llm_benchmark.main import BenchmarkConfig, BenchmarkRunner
 from llm_benchmark.utils.logger import logger
 
@@ -85,11 +86,8 @@ async def run_benchmark() -> None:
         level="DEBUG",
     )
 
-    # Create client config
-    client_config = ClientConfig(
-        base_url=args.base_url,
-        model_name=args.model_name,
-    )
+    # Create OpenAI client
+    client = AsyncOpenAI(base_url=args.base_url, api_key="sk-dummy")
 
     config = BenchmarkConfig(
         dataset_name=args.dataset,
@@ -102,7 +100,8 @@ async def run_benchmark() -> None:
     )
 
     runner = BenchmarkRunner(
-        client_config=client_config,
+        client=client,
+        model_name=args.model_name,
         output_dir=args.output_dir,
     )
     await runner.run(config)
