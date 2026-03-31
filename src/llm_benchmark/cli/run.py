@@ -7,7 +7,7 @@ from openai import AsyncOpenAI
 
 from llm_benchmark.datasets import get_dataset
 from llm_benchmark.main import BenchmarkConfig, BenchmarkRunner
-from llm_benchmark.utils.logger import logger
+from llm_benchmark.utils import logger
 
 
 def parse_args() -> argparse.Namespace:

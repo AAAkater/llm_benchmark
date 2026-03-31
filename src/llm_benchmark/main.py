@@ -18,7 +18,7 @@ from llm_benchmark.inference import (
     InferenceResult,
     SamplingConfig,
 )
-from llm_benchmark.utils.logger import logger
+from llm_benchmark.utils import logger
 
 
 class BenchmarkConfig(BaseModel):

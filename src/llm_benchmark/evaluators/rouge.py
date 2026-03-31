@@ -11,7 +11,7 @@ from rouge_chinese import Rouge as ChineseRouge
 from rouge_score import rouge_scorer
 
 from llm_benchmark.evaluators.base import BaseEvaluator, BaseScores, EvaluationResult
-from llm_benchmark.utils.logger import logger
+from llm_benchmark.utils import logger
 
 
 class RougeScores(BaseScores):

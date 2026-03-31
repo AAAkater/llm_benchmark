@@ -10,7 +10,7 @@ from typing import Any
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 
-from llm_benchmark.utils.logger import logger
+from llm_benchmark.utils import logger
 
 
 class InferenceResult(BaseModel):

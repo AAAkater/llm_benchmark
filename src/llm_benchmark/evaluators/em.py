@@ -11,7 +11,7 @@ from collections import Counter
 from typing import override
 
 from llm_benchmark.evaluators.base import BaseEvaluator, BaseScores, EvaluationResult
-from llm_benchmark.utils.logger import logger
+from llm_benchmark.utils import logger
 
 
 class EMScores(BaseScores):

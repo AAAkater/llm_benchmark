@@ -7,7 +7,7 @@ from datasets import load_dataset
 from pydantic import validate_call
 
 from llm_benchmark.datasets.base import BaseDataset, Sample
-from llm_benchmark.utils.logger import logger
+from llm_benchmark.utils import logger
 
 
 class LCSTSDataset(BaseDataset):

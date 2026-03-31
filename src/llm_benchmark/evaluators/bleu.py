@@ -10,7 +10,7 @@ from math import exp, log
 from typing import override
 
 from llm_benchmark.evaluators.base import BaseEvaluator, BaseScores, EvaluationResult
-from llm_benchmark.utils.logger import logger
+from llm_benchmark.utils import logger
 
 
 class BleuScores(BaseScores):
