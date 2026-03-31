@@ -109,6 +109,6 @@ class LCSTSDataset(BaseDataset):
 
     def get_evaluator(self):
         """Get the ROUGE evaluator for Chinese text."""
-        from llm_benchmark.evaluators.rouge import RougeEvaluator
+        from llm_benchmark.evaluators.rouge import RougeChineseEvaluator
 
-        return RougeEvaluator(language="zh")
+        return RougeChineseEvaluator()
