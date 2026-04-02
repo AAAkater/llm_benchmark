@@ -104,7 +104,7 @@ class BenchmarkRunner:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    async def run(self, config: BenchmarkConfig | None = None) -> BenchmarkResult:
+    async def run(self, config: BenchmarkConfig) -> BenchmarkResult:
         """Run a benchmark with the given configuration.
 
         Args:
@@ -114,8 +114,6 @@ class BenchmarkRunner:
         Returns:
             BenchmarkResult with all evaluation data.
         """
-        if config is None:
-            config = BenchmarkConfig()
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         logger.info(f"Starting benchmark: {self.dataset.name}")
@@ -127,7 +125,10 @@ class BenchmarkRunner:
 
         # Get predictions
         logger.info(f"Starting inference for {len(prompts)} prompts...")
-        inference_results = await self._run_concurrent_inference(prompts, config)
+        inference_results = await self.client.query_batch_concurrent(
+            prompts=prompts,
+            max_concurrent=config.max_concurrent,
+        )
         logger.info(f"Inference completed, got {len(inference_results)} predictions")
 
         # Calculate TPS stats
@@ -179,20 +180,6 @@ class BenchmarkRunner:
         self._save_results(result)
 
         return result
-
-    async def _run_concurrent_inference(
-        self,
-        prompts: list[str],
-        config: BenchmarkConfig,
-    ) -> list[InferenceResult]:
-        """Run inference using concurrent async requests."""
-
-        predictions = await self.client.query_batch_concurrent(
-            prompts=prompts,
-            max_concurrent=config.max_concurrent,
-        )
-
-        return predictions
 
     def _save_results(self, result: BenchmarkResult) -> None:
         """Save benchmark results to files in JSONL format."""
