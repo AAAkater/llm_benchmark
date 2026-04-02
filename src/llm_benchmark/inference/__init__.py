@@ -3,11 +3,9 @@
 from llm_benchmark.inference.oai_compatible import (
     InferenceResult,
     OAIBatchClient,
-    SamplingConfig,
 )
 
 __all__ = [
     "OAIBatchClient",
     "InferenceResult",
-    "SamplingConfig",
 ]

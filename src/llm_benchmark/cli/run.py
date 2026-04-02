@@ -33,29 +33,6 @@ def parse_args() -> argparse.Namespace:
         help="Maximum number of samples to evaluate",
     )
     parser.add_argument(
-        "--temperature",
-        type=float,
-        default=0.7,
-        help="Sampling temperature",
-    )
-    parser.add_argument(
-        "--top-p",
-        type=float,
-        default=0.9,
-        help="Top-p sampling",
-    )
-    parser.add_argument(
-        "--max-tokens",
-        type=int,
-        default=256,
-        help="Maximum tokens to generate",
-    )
-    parser.add_argument(
-        "--sweep",
-        action="store_true",
-        help="Run a parameter sweep instead of single config",
-    )
-    parser.add_argument(
         "--output-dir",
         type=str,
         default="results",
@@ -97,12 +74,8 @@ async def run_benchmark() -> None:
         max_samples=args.max_samples,
     )
 
-    # Create benchmark config (sampling parameters only)
-    config = BenchmarkConfig(
-        temperature=args.temperature,
-        top_p=args.top_p,
-        max_tokens=args.max_tokens,
-    )
+    # Create benchmark config
+    config = BenchmarkConfig()
 
     runner = BenchmarkRunner(
         client=client,

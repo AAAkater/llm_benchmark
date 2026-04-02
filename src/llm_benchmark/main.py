@@ -1,4 +1,4 @@
-"""Main benchmark runner for LLM sampling parameter evaluation."""
+"""Main benchmark runner for LLM evaluation."""
 
 from datetime import datetime
 from pathlib import Path
@@ -16,49 +16,18 @@ from llm_benchmark.evaluators.rouge import EvaluationResult
 from llm_benchmark.inference import (
     InferenceResult,
     OAIBatchClient,
-    SamplingConfig,
 )
 from llm_benchmark.utils import logger
 
 
 class BenchmarkConfig(BaseModel):
-    """Configuration for a benchmark run - sampling parameters only."""
-
-    # Sampling parameters to test
-    temperature: float = 0.7
-    top_p: float = 0.9
-    top_k: int = 50
-    max_tokens: int = 256
-    frequency_penalty: float = 0.0
-    presence_penalty: float = 0.0
+    """Configuration for a benchmark run."""
 
     # Batch settings
     max_concurrent: int = 10  # 降低并发数，避免服务器过载
 
     # Output settings
     output_dir: str = "results"
-
-    def to_sampling_config(self) -> SamplingConfig:
-        """Convert to SamplingConfig."""
-        return SamplingConfig(
-            temperature=self.temperature,
-            top_p=self.top_p,
-            top_k=self.top_k,
-            max_tokens=self.max_tokens,
-            frequency_penalty=self.frequency_penalty,
-            presence_penalty=self.presence_penalty,
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for logging/saving."""
-        return {
-            "temperature": self.temperature,
-            "top_p": self.top_p,
-            "top_k": self.top_k,
-            "max_tokens": self.max_tokens,
-            "frequency_penalty": self.frequency_penalty,
-            "presence_penalty": self.presence_penalty,
-        }
 
 
 class TpsStats(BaseModel):
@@ -144,7 +113,6 @@ class BenchmarkResult(BaseModel):
                     "prediction": pred,
                     **scores_dict,
                     "dataset": self.dataset_name,
-                    **self.config.to_dict(),
                     "timestamp": self.timestamp,
                 }
             )
@@ -171,7 +139,6 @@ class BenchmarkResult(BaseModel):
                     "avg_output_tps": self.tps_stats.avg_output_tps,
                     "min_output_tps": self.tps_stats.min_output_tps,
                     "max_output_tps": self.tps_stats.max_output_tps,
-                    **self.config.to_dict(),
                     "timestamp": self.timestamp,
                 }
             ]
@@ -209,7 +176,6 @@ class BenchmarkRunner:
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         logger.info(f"Starting benchmark: {self.dataset.name}")
-        logger.info(f"Config: {config.to_dict()}")
 
         samples = self.dataset.samples
 
@@ -277,11 +243,9 @@ class BenchmarkRunner:
         config: BenchmarkConfig,
     ) -> list[InferenceResult]:
         """Run inference using concurrent async requests."""
-        sampling = config.to_sampling_config()
 
         predictions = await self.client.query_batch_concurrent(
             prompts=prompts,
-            sampling=sampling,
             max_concurrent=config.max_concurrent,
         )
 

@@ -5,10 +5,9 @@ large numbers of requests efficiently.
 """
 
 import asyncio
-from typing import Any
 
 from openai import AsyncOpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from llm_benchmark.utils import logger
 
@@ -41,28 +40,6 @@ class InferenceResult(BaseModel):
         return 0.0
 
 
-class SamplingConfig(BaseModel):
-    """Sampling parameters for LLM generation."""
-
-    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
-    top_p: float = Field(default=0.9, ge=0.0, le=1.0)
-    top_k: int = Field(default=50, ge=0)
-    max_tokens: int = Field(default=256, gt=0)
-    frequency_penalty: float = Field(default=0.0, ge=-2.0, le=2.0)
-    presence_penalty: float = Field(default=0.0, ge=-2.0, le=2.0)
-
-    def to_api_params(self) -> dict[str, Any]:
-        """Convert to API parameters dict."""
-        params = {
-            "temperature": self.temperature,
-            "top_p": self.top_p,
-            "max_tokens": self.max_tokens,
-            "frequency_penalty": self.frequency_penalty,
-            "presence_penalty": self.presence_penalty,
-        }
-        return params
-
-
 class OAIBatchClient:
     """Client for OpenAI Batch API operations.
 
@@ -83,13 +60,11 @@ class OAIBatchClient:
     async def query_single(
         self,
         prompt: str,
-        sampling: SamplingConfig,
     ) -> InferenceResult:
         """Query the model with a single prompt using streaming.
 
         Args:
             prompt: The prompt to send.
-            sampling: Sampling configuration.
 
         Returns:
             InferenceResult with response, token counts, and latency.
@@ -108,7 +83,6 @@ class OAIBatchClient:
             stream=True,
             stream_options={"include_usage": True},  # Request token usage in stream
             extra_body=extra_body,
-            **sampling.to_api_params(),
         )
         chunks = []
         input_tokens = 0
@@ -134,7 +108,6 @@ class OAIBatchClient:
     async def query_batch_concurrent(
         self,
         prompts: list[str],
-        sampling: SamplingConfig,
         max_concurrent: int = 10,
     ) -> list[InferenceResult]:
         """Query multiple prompts concurrently (non-batch API).
@@ -144,7 +117,6 @@ class OAIBatchClient:
 
         Args:
             prompts: List of prompts.
-            sampling: Sampling configuration.
             max_concurrent: Maximum concurrent requests.
 
         Returns:
@@ -155,7 +127,7 @@ class OAIBatchClient:
         async def query_with_semaphore(prompt: str) -> InferenceResult:
             async with semaphore:
                 try:
-                    return await self.query_single(prompt, sampling)
+                    return await self.query_single(prompt)
                 except Exception as e:
                     logger.error(f"Request failed: {e}")
                     return InferenceResult(response=f"ERROR: {e}")
