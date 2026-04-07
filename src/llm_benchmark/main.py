@@ -71,21 +71,49 @@ class BenchmarkResult(BaseModel):
                     "dataset": self.dataset_name,
                     "n_samples": len(self.samples),
                     **avg_scores_dict,
-                    # TPS stats
-                    "total_input_tokens": self.tps_stats.total_input_tokens,
-                    "total_output_tokens": self.tps_stats.total_output_tokens,
-                    "min_input_tokens": self.tps_stats.min_input_tokens,
-                    "max_input_tokens": self.tps_stats.max_input_tokens,
-                    "min_output_tokens": self.tps_stats.min_output_tokens,
-                    "max_output_tokens": self.tps_stats.max_output_tokens,
-                    "avg_latency_ms": self.tps_stats.avg_latency_ms,
-                    "avg_output_tps": self.tps_stats.avg_output_tps,
-                    "min_output_tps": self.tps_stats.min_output_tps,
-                    "max_output_tps": self.tps_stats.max_output_tps,
-                    "timestamp": self.timestamp,
+                    # TPS stats (shortened field names)
+                    "in_tok": self.tps_stats.total_input_tokens,
+                    "out_tok": self.tps_stats.total_output_tokens,
+                    "min_in": self.tps_stats.min_input_tokens,
+                    "max_in": self.tps_stats.max_input_tokens,
+                    "min_out": self.tps_stats.min_output_tokens,
+                    "max_out": self.tps_stats.max_output_tokens,
+                    "lat_ms": self.tps_stats.avg_latency_ms,
+                    "avg_tps": self.tps_stats.avg_output_tps,
+                    "min_tps": self.tps_stats.min_output_tps,
+                    "max_tps": self.tps_stats.max_output_tps,
+                    "ts": self.timestamp,
                 }
             ]
         )
+
+
+def save_benchmark_results(result: BenchmarkResult, output_dir: str | Path = "results") -> None:
+    """Save benchmark results to files in CSV format.
+
+    Args:
+        result: BenchmarkResult to save.
+        output_dir: Directory to save results to.
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save detailed results
+    df = result.to_dataframe()
+    # Replace / with _ to avoid path issues (e.g., "hugcyp/LCSTS" -> "hugcyp_LCSTS")
+    safe_dataset_name = result.dataset_name.replace("/", "_")
+    detail_path = output_dir / f"{safe_dataset_name}_{result.timestamp}.csv"
+    df.to_csv(detail_path, index=False, encoding="utf-8")
+    logger.info(f"Saved detailed results to {detail_path}")
+
+    # Append to summary file
+    summary_path = output_dir / "benchmark_summary.csv"
+    summary_df = result.summary_dataframe()
+
+    # Check if file exists to determine if we need header
+    header = not summary_path.exists()
+    summary_df.to_csv(summary_path, mode="a", header=header, index=False, encoding="utf-8")
+    logger.info(f"Updated summary at {summary_path}")
 
 
 class BenchmarkRunner:
@@ -97,12 +125,9 @@ class BenchmarkRunner:
         model_name: str,
         dataset: BaseDataset,
         enable_thinking: bool = False,
-        output_dir: str = "results",
     ):
         self.client = OAIBatchClient(client, model_name, enable_thinking)
         self.dataset = dataset
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
 
     async def run(self, config: BenchmarkConfig) -> BenchmarkResult:
         """Run a benchmark with the given configuration.
@@ -175,31 +200,4 @@ class BenchmarkRunner:
             tps_stats=tps_stats,
             timestamp=timestamp,
         )
-
-        # Save results
-        self._save_results(result)
-
         return result
-
-    def _save_results(self, result: BenchmarkResult) -> None:
-        """Save benchmark results to files in JSONL format."""
-        import json
-
-        # Save detailed results
-        df = result.to_dataframe()
-        # Replace / with _ to avoid path issues (e.g., "hugcyp/LCSTS" -> "hugcyp_LCSTS")
-        safe_dataset_name = result.dataset_name.replace("/", "_")
-        detail_path = self.output_dir / f"{safe_dataset_name}_{result.timestamp}.jsonl"
-        with open(detail_path, "w", encoding="utf-8") as f:
-            for record in df.to_dict(orient="records"):
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
-        logger.info(f"Saved detailed results to {detail_path}")
-
-        # Append to summary file
-        summary_path = self.output_dir / "benchmark_summary.jsonl"
-        summary_df = result.summary_dataframe()
-
-        with open(summary_path, "a", encoding="utf-8") as f:
-            for record in summary_df.to_dict(orient="records"):
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
-        logger.info(f"Updated summary at {summary_path}")
