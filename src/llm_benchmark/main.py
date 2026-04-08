@@ -1,5 +1,6 @@
 """Main benchmark runner for LLM evaluation."""
 
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,9 @@ class BenchmarkConfig(BaseModel):
 
     # Output settings
     output_dir: str = "results"
+
+    # Description for the benchmark run
+    description: str = ""  # 描述信息，用于标识本次基准测试
 
 
 class BenchmarkResult(BaseModel):
@@ -69,6 +73,7 @@ class BenchmarkResult(BaseModel):
             [
                 {
                     "dataset": self.dataset_name,
+                    "description": self.config.description,
                     "n_samples": len(self.samples),
                     **avg_scores_dict,
                     # TPS stats (shortened field names)
@@ -89,7 +94,9 @@ class BenchmarkResult(BaseModel):
 
 
 def save_benchmark_results(result: BenchmarkResult, output_dir: str | Path = "results") -> None:
-    """Save benchmark results to files in CSV format.
+    """Save benchmark results to files.
+
+    Detailed results are saved as JSONL, summary is saved as CSV.
 
     Args:
         result: BenchmarkResult to save.
@@ -98,15 +105,32 @@ def save_benchmark_results(result: BenchmarkResult, output_dir: str | Path = "re
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save detailed results
-    df = result.to_dataframe()
+    # Save detailed results as JSONL
     # Replace / with _ to avoid path issues (e.g., "hugcyp/LCSTS" -> "hugcyp_LCSTS")
     safe_dataset_name = result.dataset_name.replace("/", "_")
-    detail_path = output_dir / f"{safe_dataset_name}_{result.timestamp}.csv"
-    df.to_csv(detail_path, index=False, encoding="utf-8")
+    detail_path = output_dir / f"{safe_dataset_name}_{result.timestamp}.jsonl"
+
+    rows: list[dict[str, Any]] = []
+    for sample, pred, eval_result in zip(result.samples, result.predictions, result.evaluation_results):
+        scores_dict = eval_result.scores.model_dump()
+        row = {
+            "sample_id": sample.id,
+            "text": sample.text,
+            "reference": sample.reference,
+            "prediction": pred,
+            **scores_dict,
+            "dataset": result.dataset_name,
+            "description": result.config.description,
+            "timestamp": result.timestamp,
+        }
+        rows.append(row)
+
+    with open(detail_path, "w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
     logger.info(f"Saved detailed results to {detail_path}")
 
-    # Append to summary file
+    # Append to summary file (CSV)
     summary_path = output_dir / "benchmark_summary.csv"
     summary_df = result.summary_dataframe()
 
