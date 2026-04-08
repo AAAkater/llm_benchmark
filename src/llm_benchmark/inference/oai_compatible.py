@@ -18,7 +18,8 @@ class InferenceResult(BaseModel):
     response: str
     input_tokens: int = 0
     output_tokens: int = 0
-    latency_ms: float = 0.0  # Time in milliseconds
+    latency_ms: float = 0.0  # Time in milliseconds (from first chunk to end)
+    ttft_ms: float = 0.0  # Time to first token in milliseconds
 
     @property
     def total_tokens(self) -> int:
@@ -27,14 +28,14 @@ class InferenceResult(BaseModel):
 
     @property
     def output_tps(self) -> float:
-        """Output tokens per second."""
+        """Output tokens per second (calculated from first chunk)."""
         if self.latency_ms > 0 and self.output_tokens > 0:
             return self.output_tokens / (self.latency_ms / 1000.0)
         return 0.0
 
     @property
     def total_tps(self) -> float:
-        """Total tokens per second."""
+        """Total tokens per second (calculated from first chunk)."""
         if self.latency_ms > 0 and self.total_tokens > 0:
             return self.total_tokens / (self.latency_ms / 1000.0)
         return 0.0
@@ -72,7 +73,7 @@ class OAIBatchClient:
         import time
 
         logger.debug(f"Sending request with prompt length: {len(prompt)}")
-        start_time = time.perf_counter()
+        request_start_time = time.perf_counter()
 
         extra_body = {"chat_template_kwargs": {"enable_thinking": True}} if self.enable_thinking else None
 
@@ -87,7 +88,10 @@ class OAIBatchClient:
         chunks = []
         input_tokens = 0
         output_tokens = 0
+        first_chunk_time = None
         async for chunk in stream_resp:
+            if first_chunk_time is None:
+                first_chunk_time = time.perf_counter()
             if chunk.choices and chunk.choices[0].delta.content:
                 chunks.append(chunk.choices[0].delta.content)
             # Get usage from the final chunk
@@ -96,13 +100,20 @@ class OAIBatchClient:
                 output_tokens = chunk.usage.completion_tokens or 0
         response = "".join(chunks).strip()
 
-        latency_ms = (time.perf_counter() - start_time) * 1000
+        # 计算 TTFT (Time To First Token) 和生成延迟
+        if first_chunk_time is not None:
+            ttft_ms = (first_chunk_time - request_start_time) * 1000
+            latency_ms = (time.perf_counter() - first_chunk_time) * 1000
+        else:
+            ttft_ms = 0.0
+            latency_ms = 0.0
 
         return InferenceResult(
             response=response,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             latency_ms=latency_ms,
+            ttft_ms=ttft_ms,
         )
 
     async def query_batch_concurrent(

@@ -14,11 +14,17 @@ class TpsStats(BaseModel):
     min_output_tokens: int = 0
     max_output_tokens: int = 0
 
-    # Latency
+    # Latency (from first chunk to end)
     total_latency_ms: float = 0.0
     min_latency_ms: float = 0.0
     max_latency_ms: float = 0.0
     avg_latency_ms: float = 0.0
+
+    # TTFT (Time To First Token)
+    total_ttft_ms: float = 0.0
+    min_ttft_ms: float = 0.0
+    max_ttft_ms: float = 0.0
+    avg_ttft_ms: float = 0.0
 
     # TPS
     avg_output_tps: float = 0.0
@@ -35,12 +41,14 @@ class TpsStats(BaseModel):
         input_tokens = [r.input_tokens for r in results]
         output_tokens = [r.output_tokens for r in results]
         latencies = [r.latency_ms for r in results]
+        ttfts = [r.ttft_ms for r in results]
         output_tps = [r.output_tps for r in results if r.output_tps > 0]
         total_tps = [r.total_tps for r in results if r.total_tps > 0]
 
         total_input = sum(input_tokens)
         total_output = sum(output_tokens)
         total_latency = sum(latencies)
+        total_ttft = sum(ttfts)
         n = len(results)
 
         return cls(
@@ -54,6 +62,10 @@ class TpsStats(BaseModel):
             min_latency_ms=min(latencies),
             max_latency_ms=max(latencies),
             avg_latency_ms=total_latency / n,
+            total_ttft_ms=total_ttft,
+            min_ttft_ms=min(ttfts),
+            max_ttft_ms=max(ttfts),
+            avg_ttft_ms=total_ttft / n,
             avg_output_tps=sum(output_tps) / len(output_tps) if output_tps else 0.0,
             avg_total_tps=sum(total_tps) / len(total_tps) if total_tps else 0.0,
             min_output_tps=min(output_tps) if output_tps else 0.0,
